@@ -24,7 +24,9 @@ router.post("/signup", async (req, res) => {
 			password: hashedPassword,
 		});
 
-		res.status(201).json({ message: "User registered successfully", userId: newUser._id });
+		res
+			.status(201)
+			.json({ message: "User registered successfully", userId: newUser._id });
 	} catch (err) {
 		res.status(500).json({ message: "Server error", error: err.message });
 	}
@@ -39,11 +41,19 @@ router.post("/login", async (req, res) => {
 		if (!user) return res.status(400).json({ message: "Invalid credentials" });
 
 		const isMatch = await bcrypt.compare(password, user.password);
-		if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
+		if (!isMatch)
+			return res.status(400).json({ message: "Invalid credentials" });
 
-		const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
+		const token = jwt.sign(
+			{ id: user._id, email: user.email },
+			process.env.JWT_SECRET,
+			{ expiresIn: "1h" }
+		);
 
-		res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
+		res.json({
+			token,
+			user: { id: user._id, name: user.name, email: user.email },
+		});
 	} catch (err) {
 		res.status(500).json({ message: "Server error", error: err.message });
 	}
@@ -82,6 +92,33 @@ router.post("/forgot-password", async (req, res) => {
 		await transporter.sendMail(mailOptions);
 
 		res.json({ message: "Password reset link sent to your email" });
+	} catch (err) {
+		res.status(500).json({ message: "Server error", error: err.message });
+	}
+});
+
+// ===== RESET PASSWORD =====
+router.post("/reset-password/:token", async (req, res) => {
+	try {
+		const { token } = req.params;
+		const { password } = req.body;
+
+		const user = await User.findOne({
+			resetPasswordToken: token,
+			resetPasswordExpires: { $gt: Date.now() }, // still valid
+		});
+
+		if (!user) {
+			return res.status(400).json({ message: "Invalid or expired token" });
+		}
+
+		const hashedPassword = await bcrypt.hash(password, 10);
+		user.password = hashedPassword;
+		user.resetPasswordToken = undefined;
+		user.resetPasswordExpires = undefined;
+		await user.save();
+
+		res.json({ message: "Password has been reset successfully" });
 	} catch (err) {
 		res.status(500).json({ message: "Server error", error: err.message });
 	}
