@@ -11,21 +11,33 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-//MongoDb Connection...
-mongoose
-	.connect(process.env.MONGO_URI)
-	.then(() => console.log("MongoDB connected"))
-	.catch((err) => console.error("MongoDB connection error:", err));
+const MONGO_URI =
+	process.env.MONGO_URI ||
+	"mongodb+srv://<username>:<password>@<cluster>.mongodb.net/<dbname>?retryWrites=true&w=majority";
 
-app.get("/", (req, res) => {
-	res.send("API is running...");
-});
+//Connect to MongoDB and start server only if successful...
+const startServer = async () => {
+	try {
+		await mongoose.connect(MONGO_URI);
+		console.log("MongoDB connected successfully");
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-	console.log(`Server running on port ${PORT}`);
-});
+		//Register routes after DB connection...
+		app.use("/api/auth", authRoutes);
+		app.use("/api/contacts", contactRoutes);
 
-app.use("/api/auth", authRoutes);
+		//Test route...
+		app.get("/", (req, res) => {
+			res.send("API is running...");
+		});
 
-app.use("/api/contacts", contactRoutes);
+		const PORT = process.env.PORT || 5000;
+		app.listen(PORT, () => {
+			console.log(`Server running on port ${PORT}`);
+		});
+	} catch (err) {
+		console.error("MongoDB connection error:", err);
+		process.exit(1);
+	}
+};
+
+startServer();
