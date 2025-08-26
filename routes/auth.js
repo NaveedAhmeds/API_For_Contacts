@@ -48,7 +48,8 @@ router.post("/login", async (req, res) => {
 
         const normalizedEmail = email.toLowerCase();
 
-        const user = await User.findOne({ email: normalizedEmail });
+        // Case-insensitive search for old DB entries
+        const user = await User.findOne({ email: new RegExp(`^${normalizedEmail}$`, 'i') });
         if (!user) return res.status(400).json({ message: "Invalid credentials" });
 
         const isMatch = await bcrypt.compare(password, user.password);
@@ -73,21 +74,17 @@ router.post("/login", async (req, res) => {
 router.post("/forgot-password", async (req, res) => {
     try {
         const { email } = req.body;
-
         if (!email) return res.status(400).json({ message: "Email is required." });
 
         const normalizedEmail = email.toLowerCase();
-
         const user = await User.findOne({ email: normalizedEmail });
         if (!user) return res.status(404).json({ message: "User not found" });
 
-        // Generate token
         const token = crypto.randomBytes(32).toString("hex");
         user.resetPasswordToken = token;
         user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
         await user.save();
 
-        // Setup email
         const transporter = nodemailer.createTransport({
             service: "gmail",
             auth: {
@@ -116,17 +113,14 @@ router.post("/reset-password/:token", async (req, res) => {
     try {
         const { token } = req.params;
         const { password } = req.body;
-
         if (!password) return res.status(400).json({ message: "Password is required." });
 
         const user = await User.findOne({
             resetPasswordToken: token,
-            resetPasswordExpires: { $gt: Date.now() }, // still valid
+            resetPasswordExpires: { $gt: Date.now() },
         });
 
-        if (!user) {
-            return res.status(400).json({ message: "Invalid or expired token" });
-        }
+        if (!user) return res.status(400).json({ message: "Invalid or expired token" });
 
         const hashedPassword = await bcrypt.hash(password, 10);
         user.password = hashedPassword;
